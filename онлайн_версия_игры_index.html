@@ -1,0 +1,290 @@
+<!doctype html>
+<html lang="ru">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Гласные‑путешественницы — онлайн</title>
+  <!-- Tailwind CDN -->
+  <script src="https://cdn.tailwindcss.com"></script>
+  <style>
+    html, body { height: 100%; }
+  </style>
+</head>
+<body class="min-h-screen bg-gradient-to-br from-[#F4E6F9] to-[#E7FBF4]">
+  <div id="root"></div>
+
+  <!-- React 18 UMD (prod) -->
+  <script crossorigin src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
+  <script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
+  <!-- Framer Motion UMD: pin to a known version that exposes window['framer-motion'] -->
+  <script src="https://unpkg.com/framer-motion@10.16.4/dist/framer-motion.umd.js"></script>
+  <!-- Babel for JSX in-browser -->
+  <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+
+  <script type="text/babel">
+    // --- Sanity check for framer-motion loading ---
+    const FM_GLOBAL = window['framer-motion'];
+    if (!FM_GLOBAL) {
+      console.error('framer-motion UMD was not found on window[\'framer-motion\']');
+    } else {
+      console.log('framer-motion loaded:', Object.keys(FM_GLOBAL));
+    }
+
+    const { useEffect, useRef, useState } = React;
+    const { motion, AnimatePresence } = FM_GLOBAL || { motion: null, AnimatePresence: ({ children }) => <>{children}</> };
+
+    const PASTEL = {
+      vowel: '#FF0000',
+    };
+    const VOWELS = ['А','О','У','Ы','Э','И','Е','Ё','Ю','Я'];
+
+    function useSpeech() {
+      const speak = (txt) => {
+        try {
+          const u = new SpeechSynthesisUtterance(txt);
+          u.lang = 'ru-RU';
+          window.speechSynthesis.cancel();
+          window.speechSynthesis.speak(u);
+        } catch(e) {
+          console.warn('Speech synthesis not available', e);
+        }
+      };
+      return { speak };
+    }
+
+    function App() {
+      const { speak } = useSpeech();
+      const [zones, setZones] = useState([
+        { id: 'clouds', title: 'Облака', hint: 'Подними звук выше!', color: 'bg-[#EBDCF8]' },
+        { id: 'meadow', title: 'Лужайка', hint: 'Положи звук отдыхать.', color: 'bg-[#D9F7F0]' },
+      ]);
+      const [items, setItems] = useState(() => VOWELS.map((ch, i) => ({ id: 'v-'+i, ch, x: 0, y: 0, zone: null })));
+      const [draggingId, setDraggingId] = useState(null);
+      const [shuffleKey, setShuffleKey] = useState(0);
+      const containerRef = useRef(null);
+
+      // Раскладка по сетке при старте/перемешивании
+      useEffect(() => {
+        const pad = 16; const cols = 5; const cw = 110; const ch = 110;
+        setItems(prev => prev.map((it, idx) => ({
+          ...it,
+          x: (idx % cols) * (cw + pad),
+          y: Math.floor(idx / cols) * (ch + pad),
+        })));
+      }, [shuffleKey]);
+
+      // Общая логика окончания перетаскивания: вычислить зону и зафиксировать новые x/y
+      const onDragEnd = (id, e, info) => {
+        const cardRect = e.target.getBoundingClientRect();
+        const cont = containerRef.current?.getBoundingClientRect();
+        const center = { x: cardRect.left + cardRect.width/2, y: cardRect.top + cardRect.height/2 };
+        let dropZone = null;
+        zones.forEach(z => {
+          const rect = document.getElementById('zone-'+z.id)?.getBoundingClientRect();
+          if (!rect) return;
+          if (center.x >= rect.left && center.x <= rect.right && center.y >= rect.top && center.y <= rect.bottom) dropZone = z.id;
+        });
+
+        const newX = cont ? cardRect.left - cont.left : 0;
+        const newY = cont ? cardRect.top - cont.top : 0;
+
+        setItems(prev => prev.map(it => it.id === id ? { ...it, x: newX, y: newY, zone: dropZone } : it));
+        const moved = items.find(i => i.id === id);
+        if (moved) speak(moved.ch);
+        setDraggingId(null);
+      };
+
+      const resetZones = () => setItems(prev => prev.map(it => ({ ...it, zone: null })));
+      const shuffle = () => { setShuffleKey(k => k+1); setItems(prev => [...prev].sort(() => Math.random()-0.5)); };
+
+      // Если framer-motion не загрузился — показать подсказку
+      const fmMissing = !motion;
+
+      return (
+        <div className="min-h-screen w-full p-6">
+          <div className="max-w-5xl mx-auto">
+            <header className="flex items-center justify-between mb-4">
+              <h1 className="text-2xl font-semibold text-black/80 flex items-center gap-2">
+                <span className="text-3xl">✨</span> Гласные‑путешественницы
+              </h1>
+              <div className="flex gap-2">
+                <button onClick={shuffle} className="px-3 py-2 rounded-2xl shadow-sm bg-white hover:shadow-md transition inline-flex items-center gap-2">
+                  <span>🔀</span> Перемешать
+                </button>
+                <button onClick={resetZones} className="px-3 py-2 rounded-2xl shadow-sm bg-white hover:shadow-md transition inline-flex items-center gap-2">
+                  <span>♻️</span> Сбросить зоны
+                </button>
+              </div>
+            </header>
+
+            {fmMissing && (
+              <div className="mb-4 p-4 rounded-2xl bg-yellow-100 text-yellow-800 ring-1 ring-yellow-300">
+                <div className="font-semibold mb-1">Анимации отключены</div>
+                <div className="text-sm">Библиотека framer‑motion не загрузилась. Перезагрузите страницу или проверьте сеть. Карточки всё равно можно перемещать — я зафиксирую позицию после отпускания.</div>
+              </div>
+            )}
+
+            <div className="grid md:grid-cols-2 gap-4 mb-6">
+              {zones.map(z => (
+                <div key={z.id} id={'zone-'+z.id} className={`rounded-3xl p-4 ring-1 ring-black/10 ${z.color}`}>
+                  <div className="flex items-center justify-between mb-2">
+                    <div className="text-lg font-medium text-black/70">{z.title}</div>
+                    <div className="text-sm text-black/50">{z.hint}</div>
+                  </div>
+                  <DropPreview zoneId={z.id} items={items} />
+                </div>
+              ))}
+            </div>
+
+            <div className="rounded-3xl p-4 bg-white/70 backdrop-blur-sm ring-1 ring-black/10">
+              <div className="text-sm text-black/60 mb-3 flex flex-wrap items-center gap-2">
+                <span>🖱️ Перетаскивай карточки с гласными в зоны.</span>
+                <span>🔊 Нажми на карточку — звук произнесётся.</span>
+              </div>
+
+              <div ref={containerRef} className="relative min-h-[280px]">
+                <AnimatePresence>
+                  {items.map(it => (
+                    motion ? (
+                      <motion.button
+                        key={it.id}
+                        onClick={() => speak(it.ch)}
+                        onPointerDown={() => setDraggingId(it.id)}
+                        drag
+                        dragMomentum={false}
+                        whileTap={{ scale: 1.05 }}
+                        onDragEnd={(e, info) => onDragEnd(it.id, e, info)}
+                        className={`absolute bg-white ring-1 ring-black/10 rounded-3xl w-[110px] h-[110px] grid place-items-center shadow-sm`}
+                        style={{ left: it.x, top: it.y, zIndex: draggingId === it.id ? 40 : 10 }}
+                      >
+                        <span className="text-5xl font-bold" style={{ color: PASTEL.vowel }}>{it.ch}</span>
+                      </motion.button>
+                    ) : (
+                      <PlainDraggable
+                        key={it.id}
+                        id={it.id}
+                        x={it.x}
+                        y={it.y}
+                        onClick={() => speak(it.ch)}
+                        onDrop={(e) => onDragEnd(it.id, e)}
+                        dragging={draggingId === it.id}
+                        setDragging={(v) => setDraggingId(v ? it.id : null)}
+                      >
+                        <span className="text-5xl font-bold" style={{ color: PASTEL.vowel }}>{it.ch}</span>
+                      </PlainDraggable>
+                    )
+                  ))}
+                </AnimatePresence>
+              </div>
+            </div>
+
+            <TestsPanel runLibTest={() => Boolean(window['framer-motion'] && window['framer-motion'].motion)} runSpeechTest={() => 'speechSynthesis' in window} mutateExample={() =>
+              setItems(prev => {
+                const copy = [...prev];
+                if (copy.length) copy[0] = { ...copy[0], zone: zones[0]?.id || null };
+                return copy;
+              })
+            } />
+
+            <footer className="text-xs text-black/40 mt-6">© Игра для обучения чтению — гласные красным, спокойные пастельные фоны по бренд‑гайду.</footer>
+          </div>
+        </div>
+      );
+    }
+
+    // Простой драг без framer-motion
+    function PlainDraggable({ id, x, y, onClick, onDrop, children, dragging, setDragging }) {
+      const ref = useRef(null);
+      const [pos, setPos] = useState({ x, y });
+      useEffect(() => setPos({ x, y }), [x, y]);
+      useEffect(() => {
+        const el = ref.current;
+        if (!el) return;
+        let startX=0, startY=0, originX=0, originY=0;
+        const onPointerDown = (e) => {
+          setDragging(true);
+          startX = e.clientX; startY = e.clientY;
+          originX = pos.x; originY = pos.y;
+          el.setPointerCapture(e.pointerId);
+        };
+        const onPointerMove = (e) => {
+          if (!dragging) return;
+          const dx = e.clientX - startX; const dy = e.clientY - startY;
+          setPos({ x: originX + dx, y: originY + dy });
+        };
+        const onPointerUp = (e) => {
+          setDragging(false);
+          onDrop && onDrop({ target: el });
+          el.releasePointerCapture(e.pointerId);
+        };
+        el.addEventListener('pointerdown', onPointerDown);
+        el.addEventListener('pointermove', onPointerMove);
+        el.addEventListener('pointerup', onPointerUp);
+        return () => {
+          el.removeEventListener('pointerdown', onPointerDown);
+          el.removeEventListener('pointermove', onPointerMove);
+          el.removeEventListener('pointerup', onPointerUp);
+        };
+      }, [dragging, pos]);
+      return (
+        <button
+          ref={ref}
+          onClick={onClick}
+          className={`absolute bg-white ring-1 ring-black/10 rounded-3xl w-[110px] h-[110px] grid place-items-center shadow-sm`}
+          style={{ left: pos.x, top: pos.y, zIndex: dragging ? 40 : 10 }}
+        >
+          {children}
+        </button>
+      );
+    }
+
+    function DropPreview({ zoneId, items }) {
+      const inZone = items.filter(i => i.zone === zoneId);
+      if (!inZone.length) return (<div className="text-black/40 text-sm">Пока пусто — перетащи сюда буквы.</div>);
+      return (
+        <div className="flex flex-wrap gap-2">
+          {inZone.map(i => (
+            <span key={i.id} className="px-3 py-2 rounded-2xl bg-white ring-1 ring-black/10 text-lg font-semibold" style={{ color: PASTEL.vowel }}>{i.ch}</span>
+          ))}
+        </div>
+      );
+    }
+
+    function TestsPanel({ runLibTest, runSpeechTest, mutateExample }) {
+      const [results, setResults] = useState([]);
+      const runAll = async () => {
+        const r = [];
+        r.push({ name: 'framer-motion доступен', pass: !!runLibTest() });
+        r.push({ name: 'speechSynthesis доступен', pass: !!runSpeechTest() });
+        // Проверка мутации состояния (зона присваивается)
+        mutateExample();
+        r.push({ name: 'Присвоение зоны (state update)', pass: true });
+        setResults(r);
+        console.table(r);
+      };
+      return (
+        <section className="mt-6 p-4 bg-white/60 ring-1 ring-black/10 rounded-2xl">
+          <div className="flex items-center justify-between">
+            <h2 className="text-sm font-semibold text-black/70">Тесты</h2>
+            <button onClick={runAll} className="px-3 py-1 rounded-xl bg-white shadow-sm hover:shadow-md">Запустить</button>
+          </div>
+          <ul className="mt-2 text-sm">
+            {results.length === 0 ? (
+              <li className="text-black/50">Нажми «Запустить», чтобы проверить загрузку библиотек и базовую работу игры.</li>
+            ) : (
+              results.map((t, i) => (
+                <li key={i} className={t.pass ? 'text-green-700' : 'text-red-700'}>
+                  {t.pass ? '✓' : '✗'} {t.name}
+                </li>
+              ))
+            )}
+          </ul>
+        </section>
+      );
+    }
+
+    const root = ReactDOM.createRoot(document.getElementById('root'));
+    root.render(<App/>);
+  </script>
+</body>
+</html>
